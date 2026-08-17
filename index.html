@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#241726">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rituales">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Rituales · Meditación guiada</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500&family=Work+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ================= HOME ================= -->
+  <section id="screen-home" class="screen screen--active">
+    <div class="home-header">
+      <p class="eyebrow">Ritual del día</p>
+      <h1 class="home-title">Elige tu<br>meditación</h1>
+      <p class="home-sub">Voz guiada + frecuencia sanadora · máx. 15 min</p>
+    </div>
+
+    <ul class="ritual-list" id="ritual-list"><!-- inyectado por JS --></ul>
+
+    <button id="btn-settings" class="settings-fab" aria-label="Ajustes de voz">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="12" cy="12" r="3.2"></circle>
+        <path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H10a1.7 1.7 0 0 0 1-1.55V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V10a1.7 1.7 0 0 0 1.55 1H20a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+  </section>
+
+  <!-- ================= PLAYER ================= -->
+  <section id="screen-player" class="screen">
+    <button id="btn-back" class="back-btn" aria-label="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+    </button>
+
+    <div class="player-meta">
+      <p class="player-freq" id="player-freq">528 Hz</p>
+      <h2 class="player-title" id="player-title">Atención Plena</h2>
+    </div>
+
+    <div class="breath-stage">
+      <svg id="progress-ring" viewBox="0 0 240 240" class="progress-ring">
+        <circle class="progress-ring__bg" cx="120" cy="120" r="108"></circle>
+        <circle class="progress-ring__fg" id="progress-ring-fg" cx="120" cy="120" r="108"></circle>
+      </svg>
+      <div class="breath-rings" id="breath-rings">
+        <div class="ring ring--3"></div>
+        <div class="ring ring--2"></div>
+        <div class="ring ring--1"></div>
+        <button id="btn-play" class="play-btn" aria-label="Reproducir">
+          <svg id="icon-play" viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="icon-pause" viewBox="0 0 24 24" width="26" height="26" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="caption-box">
+      <p id="live-caption" class="live-caption">Toca reproducir cuando estés lista.</p>
+    </div>
+
+    <canvas id="wave-canvas" class="wave-canvas" height="40"></canvas>
+
+    <div class="time-row">
+      <span id="time-elapsed">00:00</span>
+      <span id="time-total">~14:00</span>
+    </div>
+
+    <div class="player-controls-row">
+      <button id="btn-tone-toggle" class="pill-btn" data-on="true">Tono: activado</button>
+      <button id="btn-stop" class="pill-btn pill-btn--ghost">Terminar</button>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section id="screen-settings" class="screen">
+    <button class="back-btn" id="btn-settings-back" aria-label="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+    </button>
+    <h2 class="settings-title">Ajustes</h2>
+
+    <div class="setting-block">
+      <label class="setting-label" for="voice-select">Voz</label>
+      <select id="voice-select" class="setting-select"></select>
+      <p class="setting-hint">iOS suele tener "Mónica", "Paulina" o "Ángela" como voces femeninas en español. Elige la que te suene más suave.</p>
+    </div>
+
+    <div class="setting-block">
+      <label class="setting-label" for="rate-range">Velocidad de la voz</label>
+      <input type="range" id="rate-range" min="0.6" max="1" step="0.02" value="0.82">
+      <div class="setting-scale"><span>Muy lenta</span><span>Natural</span></div>
+    </div>
+
+    <div class="setting-block">
+      <label class="setting-label" for="tone-volume">Volumen del tono de fondo</label>
+      <input type="range" id="tone-volume" min="0" max="0.25" step="0.01" value="0.09">
+    </div>
+
+    <div class="setting-block">
+      <label class="setting-label switch-row" for="binaural-toggle">
+        <span>Efecto binaural (usa audífonos)</span>
+        <input type="checkbox" id="binaural-toggle" checked>
+      </label>
+      <p class="setting-hint">Reproduce una frecuencia ligeramente distinta en cada oído. Solo funciona bien con audífonos.</p>
+    </div>
+
+    <button id="btn-test-voice" class="pill-btn">Probar voz</button>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
