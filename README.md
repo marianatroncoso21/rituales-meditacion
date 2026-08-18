@@ -30,3 +30,5 @@ PWA offline con 6 meditaciones guiadas (voz + frecuencia sanadora), pensada para
 - Guardar un historial de sesiones completadas.
 - Agregar más rituales (ej. meditación matutina, gratitud).
 - Descargar el audio como archivo en vez de generarlo en vivo (requeriría un servicio de texto-a-voz externo).
+
+
