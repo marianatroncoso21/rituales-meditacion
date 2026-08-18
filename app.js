@@ -7,6 +7,7 @@
     home: $("#screen-home"),
     player: $("#screen-player"),
     settings: $("#screen-settings"),
+    transcript: $("#screen-transcript"),
   };
   function goTo(name) {
     Object.values(screens).forEach(s => s.classList.remove("screen--active"));
@@ -29,18 +30,29 @@
   }
 
   // ---------------------------------------------------------------
-  // Estimate duration per meditation (for display only)
+  // Timing helpers
   // ---------------------------------------------------------------
+  const WPM_BASE = 148; // approx spoken words/minute at rate 1.0 on iOS
+
+  function segSeconds(seg, rate) {
+    const words = seg.t.trim().split(/\s+/).length;
+    const wpm = WPM_BASE * rate;
+    return (words / wpm) * 60;
+  }
   function estimateSeconds(med, rate) {
-    const wpmBase = 148; // approx spoken words/minute at rate 1.0 on iOS
-    const wpm = wpmBase * rate;
     let total = 0;
-    med.segments.forEach(seg => {
-      const words = seg.t.trim().split(/\s+/).length;
-      total += (words / wpm) * 60;
-      total += seg.p;
-    });
+    med.segments.forEach(seg => { total += segSeconds(seg, rate) + seg.p; });
     return total;
+  }
+  // cumulative time at which each segment STARTS
+  function buildCumStarts(med, rate) {
+    const starts = [];
+    let t = 0;
+    med.segments.forEach(seg => {
+      starts.push(t);
+      t += segSeconds(seg, rate) + seg.p;
+    });
+    return starts;
   }
   function fmt(sec) {
     sec = Math.max(0, Math.round(sec));
@@ -80,8 +92,7 @@
     spanishVoices = all.filter(v => v.lang && v.lang.toLowerCase().startsWith("es"));
     if (spanishVoices.length === 0) spanishVoices = all; // fallback
 
-    // Heuristic: prefer names commonly female on iOS/macOS Spanish voices
-    const femaleHints = ["mónica","monica","paulina","ángela","angela","female","mujer","carmen","conchita","lucia","lucía","marisol","soledad","isabela","paloma","María","maria"];
+    const femaleHints = ["mónica","monica","paulina","ángela","angela","female","mujer","carmen","conchita","lucia","lucía","marisol","soledad","isabela","paloma","maría","maria","ester","éster"];
     spanishVoices.sort((a, b) => {
       const aScore = femaleHints.some(h => a.name.toLowerCase().includes(h)) ? 0 : 1;
       const bScore = femaleHints.some(h => b.name.toLowerCase().includes(h)) ? 0 : 1;
@@ -138,26 +149,30 @@
   });
 
   $("#btn-test-voice").addEventListener("click", () => {
-    speakOnce("Hola. Así sonará mi voz durante tu meditación.");
-  });
-
-  function speakOnce(text) {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance("Hola. Así sonará mi voz durante tu meditación.");
     u.lang = "es-MX";
     const v = currentVoice();
     if (v) u.voice = v;
     u.rate = prefs.rate;
     u.pitch = 1.04;
     speechSynthesis.speak(u);
-  }
+  });
 
   // ---------------------------------------------------------------
   // Web Audio: healing-frequency tone + waveform visualizer
   // ---------------------------------------------------------------
+  // On iOS, oscillators created via Web Audio are silenced by the physical
+  // mute switch by default, while SpeechSynthesis ignores it — causing the
+  // tone to disappear while the voice keeps playing. Requesting "playback"
+  // type (supported on iOS 17+) makes Web Audio behave like a music app and
+  // ignore the switch too. Silently does nothing on browsers that lack it.
+  if ("audioSession" in navigator) {
+    try { navigator.audioSession.type = "playback"; } catch (e) {}
+  }
+
   let audioCtx = null;
   let oscL, oscR, toneGain, analyser, merger, filter;
-  let waveRAF = null;
 
   function ensureAudioGraph(freq, binaural) {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -215,7 +230,7 @@
     const w = waveCanvas.width = waveCanvas.clientWidth * 2;
     const h = waveCanvas.height = waveCanvas.clientHeight * 2;
     waveCtx.clearRect(0, 0, w, h);
-    if (!analyser) { waveRAF = requestAnimationFrame(drawWave); return; }
+    if (!analyser) { requestAnimationFrame(drawWave); return; }
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteTimeDomainData(data);
     const barCount = 40;
@@ -229,7 +244,7 @@
       waveCtx.globalAlpha = 0.55 + Math.abs(v) * 0.45;
       waveCtx.fillRect(i * barW + barW * 0.25, (h - barH) / 2, barW * 0.5, barH);
     }
-    waveRAF = requestAnimationFrame(drawWave);
+    requestAnimationFrame(drawWave);
   }
   drawWave();
 
@@ -245,6 +260,9 @@
   function releaseWakeLock() {
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.playing) requestWakeLock();
+  });
 
   // ---------------------------------------------------------------
   // Playback engine
@@ -257,9 +275,11 @@
     playing: false,
     elapsed: 0,
     totalEstimate: 0,
+    cumStarts: [],
     tickInterval: null,
     pendingTimeout: null,
-    finishing: false,
+    playToken: 0,      // invalidated on pause/stop/seek so stale callbacks are ignored
+    liveUtterance: null, // kept as a strong reference — Safari can silently drop GC'd utterances
   };
 
   const playerTitle = $("#player-title");
@@ -273,31 +293,58 @@
   const iconPlay = $("#icon-play");
   const iconPause = $("#icon-pause");
   const btnToneToggle = $("#btn-tone-toggle");
+  const seekBar = $("#seek-bar");
+  const transcriptBody = $("#transcript-body");
+  const transcriptTitle = $("#transcript-title");
 
   function openPlayer(med) {
     state.med = med;
     state.segIndex = 0;
     state.elapsed = 0;
     state.playing = false;
-    state.finishing = false;
+    state.playToken++;
     document.documentElement.style.setProperty("--accent", med.color);
     playerTitle.textContent = med.title;
     playerFreq.textContent = med.freqLabel;
     liveCaption.textContent = "Toca reproducir cuando estés lista.";
-    state.totalEstimate = estimateSeconds(med, prefs.rate);
-    timeTotalEl.textContent = "~" + fmt(Math.min(state.totalEstimate, SAFETY_CUTOFF));
+    refreshTiming();
     timeElapsedEl.textContent = "00:00";
     progressFg.style.strokeDasharray = CIRC;
     progressFg.style.strokeDashoffset = CIRC;
     setPlayIcon(false);
     document.body.classList.add("is-paused");
+    buildTranscript(med);
     goTo("player");
+  }
+
+  function refreshTiming() {
+    state.totalEstimate = estimateSeconds(state.med, prefs.rate);
+    state.cumStarts = buildCumStarts(state.med, prefs.rate);
+    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF);
+    seekBar.max = String(Math.round(cap));
+    timeTotalEl.textContent = "~" + fmt(cap);
+    updateSeekUI();
+  }
+
+  function updateSeekUI() {
+    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF) || 1;
+    const pct = Math.min(1, state.elapsed / cap);
+    seekBar.value = String(Math.round(state.elapsed));
+    seekBar.style.setProperty("--seek-pct", (pct * 100) + "%");
+    progressFg.style.strokeDashoffset = String(CIRC * (1 - pct));
+    timeElapsedEl.textContent = fmt(state.elapsed);
   }
 
   $("#btn-back").addEventListener("click", () => { stopSession(); goTo("home"); });
   $("#btn-stop").addEventListener("click", () => { stopSession(); goTo("home"); });
   $("#btn-settings").addEventListener("click", () => goTo("settings"));
   $("#btn-settings-back").addEventListener("click", () => goTo("home"));
+  $("#btn-transcript").addEventListener("click", () => {
+    transcriptTitle.textContent = state.med ? state.med.title : "Texto completo";
+    goTo("transcript");
+    highlightTranscript(state.segIndex, true);
+  });
+  $("#btn-transcript-back").addEventListener("click", () => goTo("player"));
 
   btnToneToggle.addEventListener("click", () => {
     prefs.toneOn = !prefs.toneOn;
@@ -329,6 +376,7 @@
 
   function pauseSession() {
     state.playing = false;
+    state.playToken++;
     setPlayIcon(false);
     speechSynthesis.cancel();
     clearTimeout(state.pendingTimeout);
@@ -339,6 +387,7 @@
 
   function stopSession() {
     state.playing = false;
+    state.playToken++;
     speechSynthesis.cancel();
     clearTimeout(state.pendingTimeout);
     stopTicker();
@@ -350,35 +399,30 @@
   function startTicker() {
     stopTicker();
     state.tickInterval = setInterval(() => {
+      if (!state.playing) return;
       state.elapsed += 1;
-      timeElapsedEl.textContent = fmt(state.elapsed);
-      const pct = Math.min(1, state.elapsed / Math.max(1, Math.min(state.totalEstimate, SAFETY_CUTOFF)));
-      progressFg.style.strokeDashoffset = String(CIRC * (1 - pct));
-      if (state.elapsed >= SAFETY_CUTOFF - 20 && !state.finishing) {
-        jumpToClosing();
-      }
+      updateSeekUI();
+      highlightTranscript(state.segIndex, false);
+      const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF);
+      if (state.elapsed >= cap) finishSession();
     }, 1000);
   }
   function stopTicker() { clearInterval(state.tickInterval); state.tickInterval = null; }
 
-  function jumpToClosing() {
-    // Gracefully skip ahead to the final segment instead of hard-cutting mid-sentence.
-    state.finishing = true;
-    state.segIndex = state.med.segments.length - 1;
-  }
-
   function speakSegment(i) {
     if (!state.playing) return;
-    if (i >= state.med.segments.length) {
-      finishSession();
-      return;
-    }
+    if (i >= state.med.segments.length) { finishSession(); return; }
+
     const seg = state.med.segments[i];
+    const token = state.playToken;
+
     liveCaption.style.opacity = 0;
     setTimeout(() => {
+      if (state.playToken !== token) return;
       liveCaption.textContent = seg.t;
       liveCaption.style.opacity = 1;
     }, 200);
+    highlightTranscript(i, false);
 
     const u = new SpeechSynthesisUtterance(seg.t);
     u.lang = "es-MX";
@@ -386,31 +430,119 @@
     if (v) u.voice = v;
     u.rate = prefs.rate;
     u.pitch = 1.04;
-    u.onend = () => {
-      if (!state.playing) return;
+    state.liveUtterance = u; // keep a strong reference so Safari doesn't GC it mid-speech
+
+    let settled = false;
+    const advance = () => {
+      if (settled) return;
+      settled = true;
+      if (state.playToken !== token) return;
+      clearTimeout(watchdog);
       state.pendingTimeout = setTimeout(() => {
+        if (state.playToken !== token) return;
         state.segIndex = i + 1;
         speakSegment(state.segIndex);
-      }, (state.finishing ? Math.min(seg.p, 4) : seg.p) * 1000);
+      }, seg.p * 1000);
     };
-    u.onerror = () => {
-      if (!state.playing) return;
-      state.pendingTimeout = setTimeout(() => {
-        state.segIndex = i + 1;
-        speakSegment(state.segIndex);
-      }, 800);
-    };
+
+    // Safety net: iOS Safari occasionally drops the onend/onerror event for
+    // an utterance and the session stalls forever with only the tone playing.
+    // If that happens, force the sequence forward after a generous timeout.
+    const expectedMs = (segSeconds(seg, prefs.rate) * 1000) * 2.5 + 6000;
+    const watchdog = setTimeout(advance, expectedMs);
+
+    u.onend = advance;
+    u.onerror = advance;
     speechSynthesis.speak(u);
   }
 
   function finishSession() {
     state.playing = false;
+    state.playToken++;
+    speechSynthesis.cancel();
+    clearTimeout(state.pendingTimeout);
+    stopTicker();
     setPlayIcon(false);
     liveCaption.textContent = "Sesión completa. 🌙";
-    progressFg.style.strokeDashoffset = "0";
+    state.elapsed = Math.min(state.totalEstimate, SAFETY_CUTOFF);
+    updateSeekUI();
     fadeToneTo(0);
     setTimeout(stopAudioGraph, 1500);
     releaseWakeLock();
+  }
+
+  // ---------------------------------------------------------------
+  // Seeking / scrubbing
+  // ---------------------------------------------------------------
+  function segmentIndexForTime(t) {
+    let idx = 0;
+    for (let k = 0; k < state.cumStarts.length; k++) {
+      if (state.cumStarts[k] <= t) idx = k; else break;
+    }
+    return idx;
+  }
+
+  function seekTo(targetSeconds) {
+    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF);
+    const t = Math.max(0, Math.min(cap, targetSeconds));
+    const idx = segmentIndexForTime(t);
+
+    state.playToken++; // invalidate anything in-flight
+    speechSynthesis.cancel();
+    clearTimeout(state.pendingTimeout);
+
+    state.segIndex = idx;
+    state.elapsed = Math.round(t);
+    updateSeekUI();
+    highlightTranscript(idx, true);
+
+    if (state.playing) {
+      speakSegment(state.segIndex);
+    } else {
+      liveCaption.textContent = state.med.segments[idx].t;
+    }
+  }
+
+  seekBar.addEventListener("input", () => {
+    // live-update visual position while dragging, without restarting speech yet
+    const t = parseFloat(seekBar.value);
+    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF) || 1;
+    seekBar.style.setProperty("--seek-pct", (Math.min(1, t / cap) * 100) + "%");
+    timeElapsedEl.textContent = fmt(t);
+  });
+  seekBar.addEventListener("change", () => {
+    seekTo(parseFloat(seekBar.value));
+  });
+
+  $("#btn-skip-back").addEventListener("click", () => seekTo(state.elapsed - 15));
+  $("#btn-skip-fwd").addEventListener("click", () => seekTo(state.elapsed + 15));
+
+  // ---------------------------------------------------------------
+  // Full transcript ("lyrics view")
+  // ---------------------------------------------------------------
+  let transcriptEls = [];
+  function buildTranscript(med) {
+    transcriptBody.innerHTML = "";
+    transcriptEls = med.segments.map((seg, idx) => {
+      const p = document.createElement("p");
+      p.className = "transcript-line";
+      p.textContent = seg.t;
+      p.dataset.index = String(idx);
+      p.addEventListener("click", () => {
+        seekTo(state.cumStarts[idx]);
+        goTo("player");
+      });
+      transcriptBody.appendChild(p);
+      return p;
+    });
+  }
+  function highlightTranscript(idx, forceScroll) {
+    if (!transcriptEls.length) return;
+    transcriptEls.forEach((el, k) => el.classList.toggle("is-current", k === idx));
+    if (forceScroll || screens.transcript.classList.contains("screen--active")) {
+      const el = transcriptEls[idx];
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }
 
   // iOS sometimes suspends speech synthesis after the tab has been

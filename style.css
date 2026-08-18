@@ -162,10 +162,64 @@ body.is-paused .ring{ animation-play-state: paused; }
 
 .wave-canvas{ width:100%; max-width:280px; height:34px; margin:6px auto 2px; opacity:.8; }
 
+.transcript-btn{
+  position:absolute; top:calc(24px + env(safe-area-inset-top)); right:20px;
+  width:36px; height:36px; border-radius:50%;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  color:var(--paper);
+  display:flex; align-items:center; justify-content:center;
+  z-index:5;
+}
+
+.seek-block{ width:100%; max-width:300px; margin:0 auto; }
+.seek-bar{
+  width:100%; height:20px;
+  -webkit-appearance:none; appearance:none;
+  background:transparent; margin:0;
+}
+.seek-bar::-webkit-slider-runnable-track{
+  height:4px; border-radius:4px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent) var(--seek-pct, 0%), rgba(255,255,255,.12) var(--seek-pct, 0%), rgba(255,255,255,.12) 100%);
+}
+.seek-bar::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width:15px; height:15px; border-radius:50%;
+  background:var(--accent); margin-top:-5.5px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+
 .time-row{
-  display:flex; justify-content:center; gap:10px;
+  display:flex; justify-content:space-between; gap:10px;
   font-family:var(--font-mono); font-size:12px; color:var(--paper-dim);
-  margin-bottom:20px;
+  margin-top:6px;
+}
+
+.transport-row{
+  display:flex; align-items:center; justify-content:center; gap:34px;
+  margin: 16px 0 10px;
+}
+.transport-btn{
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  background:none; border:none; color:var(--paper-dim);
+  font-family:var(--font-mono); font-size:9.5px;
+  padding:4px 10px;
+}
+.transport-btn svg{ color:var(--paper); }
+
+/* ---------- TRANSCRIPT ---------- */
+.transcript-body{
+  flex:1; overflow-y:auto; padding-bottom:40px;
+  display:flex; flex-direction:column; gap:16px;
+  margin-top:8px;
+}
+.transcript-line{
+  font-family:var(--font-display); font-size:16.5px; line-height:1.55;
+  color:var(--paper-dim); font-weight:300;
+  transition: color .35s ease, opacity .35s ease;
+  opacity:.6;
+}
+.transcript-line.is-current{
+  color:var(--paper); opacity:1; font-weight:500;
 }
 
 .player-controls-row{

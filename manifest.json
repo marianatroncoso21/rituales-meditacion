@@ -1,6 +1,6 @@
 {
-  "name": "Rituales · Meditación Guiada",
-  "short_name": "Rituales",
+  "name": "Ritual · Meditación Guiada",
+  "short_name": "Ritual",
   "description": "Meditaciones guiadas con voz y frecuencias sanadoras",
   "start_url": "./index.html",
   "scope": "./",

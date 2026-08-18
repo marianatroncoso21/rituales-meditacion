@@ -1,4 +1,4 @@
-# Rituales — Meditación Guiada
+# Ritual — Meditación Guiada
 
 PWA offline con 6 meditaciones guiadas (voz + frecuencia sanadora), pensada para instalarse en tu iPhone.
 
@@ -20,15 +20,16 @@ PWA offline con 6 meditaciones guiadas (voz + frecuencia sanadora), pensada para
 
 ## Notas técnicas importantes
 
-- **Voces**: la primera vez que abras la app, dale un vistazo a Ajustes → Voz y prueba cuál suena más suave en tu iPhone (iOS suele incluir "Mónica", "Paulina" o "Ángela" en español).
-- **Pantalla bloqueada**: iOS puede pausar la síntesis de voz si el teléfono se bloquea o cambias de app. La app pide mantener la pantalla encendida (Wake Lock) mientras reproduces, pero es buena idea no cambiar de app durante la meditación.
+- **Voces**: la primera vez que abras la app, dale un vistazo a Ajustes → Voz y prueba cuál suena más suave en tu iPhone (iOS suele incluir "Mónica", "Paulina" o "Ángela" en español). Para que suenen menos robóticas, descarga la versión "Mejorada" o "Premium" de esa voz en Ajustes del iPhone → Accesibilidad → Contenido hablado → Voces.
+- **Pantalla bloqueada**: esta es la limitación más importante a tener en cuenta. La app usa Web Speech API (la síntesis de voz del navegador), y en iOS Safari **no está garantizado que la voz siga sonando si bloqueas la pantalla manualmente con el botón**, aunque el tono de fondo (que sí usa Web Audio) tiene más probabilidad de seguir. La app activa "Wake Lock" para intentar mantener la pantalla encendida mientras reproduces, pero eso no evita que tú la bloquees a propósito. Recomendación: antes de meditar, ve a Ajustes del iPhone → Pantalla y Brillo → Bloqueo Automático → "Nunca" (y bájale el brillo para cuidar la batería), y vuelve a poner el bloqueo automático normal después.
 - **Pausa/reanudar**: por limitaciones de Safari con la síntesis de voz, al reanudar se repite la frase actual desde el inicio (no continúa a la mitad). Es una limitación del navegador, no un bug.
 - **Efecto binaural**: solo se percibe bien con audífonos, ya que envía una frecuencia ligeramente distinta a cada oído.
+- **Barra de avance/retroceso**: puedes arrastrar la barra o usar los botones de 15s para saltar. Como el audio se genera en vivo (no es un archivo), el salto es por "línea" de la meditación más cercana al segundo que elegiste, no al segundo exacto.
+- **Texto completo**: el ícono de líneas (☰) arriba a la derecha del reproductor abre el guion completo de la meditación, con la línea actual resaltada y con scroll automático, similar a una vista de letras. Puedes tocar cualquier línea para saltar directo ahí.
+- **Si una meditación se queda sonando solo el tono sin voz**: se agregó un mecanismo de seguridad que detecta cuando Safari deja de avisar que terminó de hablar (un bug conocido de iOS) y fuerza que continúe automáticamente. Si de todas formas se traba, usa la barra de avance para saltar manualmente.
 
 ## Próximas ideas (si quieres seguir iterando)
 
 - Guardar un historial de sesiones completadas.
 - Agregar más rituales (ej. meditación matutina, gratitud).
 - Descargar el audio como archivo en vez de generarlo en vivo (requeriría un servicio de texto-a-voz externo).
-
-
