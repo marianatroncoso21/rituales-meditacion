@@ -7,11 +7,19 @@
     home: $("#screen-home"),
     player: $("#screen-player"),
     settings: $("#screen-settings"),
-    transcript: $("#screen-transcript"),
   };
   function goTo(name) {
     Object.values(screens).forEach(s => s.classList.remove("screen--active"));
     screens[name].classList.add("screen--active");
+  }
+
+  // On iOS, oscillators created via Web Audio are silenced by the physical
+  // mute switch by default, while SpeechSynthesis ignores it — causing the
+  // healing tone to disappear while the voice keeps playing. Requesting
+  // "playback" type (supported on iOS 17+) makes Web Audio behave like a
+  // music app and ignore the switch too. Does nothing on browsers without it.
+  if ("audioSession" in navigator) {
+    try { navigator.audioSession.type = "playback"; } catch (e) {}
   }
 
   // ---------------------------------------------------------------
@@ -19,7 +27,8 @@
   // ---------------------------------------------------------------
   const prefs = Object.assign({
     voiceURI: null,
-    rate: 0.82,
+    rate: 0.84,
+    pitch: 1.0,
     toneVolume: 0.09,
     binaural: true,
     toneOn: true,
@@ -30,29 +39,36 @@
   }
 
   // ---------------------------------------------------------------
-  // Timing helpers
+  // Duration estimate + cumulative timeline (for display and seeking)
   // ---------------------------------------------------------------
-  const WPM_BASE = 148; // approx spoken words/minute at rate 1.0 on iOS
-
-  function segSeconds(seg, rate) {
-    const words = seg.t.trim().split(/\s+/).length;
-    const wpm = WPM_BASE * rate;
-    return (words / wpm) * 60;
-  }
   function estimateSeconds(med, rate) {
+    const wpmBase = 148; // approx spoken words/minute at rate 1.0 on iOS
+    const wpm = wpmBase * rate;
     let total = 0;
-    med.segments.forEach(seg => { total += segSeconds(seg, rate) + seg.p; });
+    med.segments.forEach(seg => {
+      const words = seg.t.trim().split(/\s+/).length;
+      total += (words / wpm) * 60;
+      total += seg.p;
+    });
     return total;
   }
-  // cumulative time at which each segment STARTS
-  function buildCumStarts(med, rate) {
-    const starts = [];
+  function buildCumulative(med, rate) {
+    const wpmBase = 148;
+    const wpm = wpmBase * rate;
     let t = 0;
-    med.segments.forEach(seg => {
-      starts.push(t);
-      t += segSeconds(seg, rate) + seg.p;
+    return med.segments.map(seg => {
+      const words = seg.t.trim().split(/\s+/).length;
+      const speakSec = (words / wpm) * 60;
+      const entry = { start: t, spokenEnd: t + speakSec, end: t + speakSec + seg.p, speakSec };
+      t = entry.end;
+      return entry;
     });
-    return starts;
+  }
+  function segmentIndexForTime(cumulative, t) {
+    for (let i = 0; i < cumulative.length; i++) {
+      if (t < cumulative[i].end) return i;
+    }
+    return cumulative.length - 1;
   }
   function fmt(sec) {
     sec = Math.max(0, Math.round(sec));
@@ -70,7 +86,7 @@
     li.style.color = med.color;
     const estMin = Math.round(estimateSeconds(med, prefs.rate) / 60);
     li.innerHTML = `
-      <span class="ritual-dot" style="background:${med.color}; color:${med.color}"></span>
+      <span class="ritual-dot" style="background:${med.color}"></span>
       <span class="ritual-text">
         <p class="ritual-title" style="color:var(--paper)">${med.title}</p>
         <p class="ritual-desc">${med.desc}</p>
@@ -92,7 +108,7 @@
     spanishVoices = all.filter(v => v.lang && v.lang.toLowerCase().startsWith("es"));
     if (spanishVoices.length === 0) spanishVoices = all; // fallback
 
-    const femaleHints = ["mónica","monica","paulina","ángela","angela","female","mujer","carmen","conchita","lucia","lucía","marisol","soledad","isabela","paloma","maría","maria","ester","éster"];
+    const femaleHints = ["mónica","monica","paulina","ángela","angela","female","mujer","carmen","conchita","lucia","lucía","marisol","soledad","isabela","paloma","maría","maria"];
     spanishVoices.sort((a, b) => {
       const aScore = femaleHints.some(h => a.name.toLowerCase().includes(h)) ? 0 : 1;
       const bScore = femaleHints.some(h => b.name.toLowerCase().includes(h)) ? 0 : 1;
@@ -117,6 +133,14 @@
   speechSynthesis.onvoiceschanged = loadVoices;
   loadVoices();
 
+  $("#btn-refresh-voices").addEventListener("click", () => {
+    loadVoices();
+    const btn = $("#btn-refresh-voices");
+    const original = btn.textContent;
+    btn.textContent = "Actualizado ✓";
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  });
+
   voiceSelect.addEventListener("change", () => {
     prefs.voiceURI = voiceSelect.value;
     savePrefs();
@@ -130,6 +154,13 @@
   rateRange.value = prefs.rate;
   rateRange.addEventListener("input", () => {
     prefs.rate = parseFloat(rateRange.value);
+    savePrefs();
+  });
+
+  const pitchRange = $("#pitch-range");
+  pitchRange.value = prefs.pitch;
+  pitchRange.addEventListener("input", () => {
+    prefs.pitch = parseFloat(pitchRange.value);
     savePrefs();
   });
 
@@ -149,28 +180,23 @@
   });
 
   $("#btn-test-voice").addEventListener("click", () => {
+    speakOnce("Hola. Así sonará mi voz durante tu meditación.");
+  });
+
+  function speakOnce(text) {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance("Hola. Así sonará mi voz durante tu meditación.");
+    const u = new SpeechSynthesisUtterance(text);
     u.lang = "es-MX";
     const v = currentVoice();
     if (v) u.voice = v;
     u.rate = prefs.rate;
-    u.pitch = 1.04;
+    u.pitch = prefs.pitch;
     speechSynthesis.speak(u);
-  });
+  }
 
   // ---------------------------------------------------------------
   // Web Audio: healing-frequency tone + waveform visualizer
   // ---------------------------------------------------------------
-  // On iOS, oscillators created via Web Audio are silenced by the physical
-  // mute switch by default, while SpeechSynthesis ignores it — causing the
-  // tone to disappear while the voice keeps playing. Requesting "playback"
-  // type (supported on iOS 17+) makes Web Audio behave like a music app and
-  // ignore the switch too. Silently does nothing on browsers that lack it.
-  if ("audioSession" in navigator) {
-    try { navigator.audioSession.type = "playback"; } catch (e) {}
-  }
-
   let audioCtx = null;
   let oscL, oscR, toneGain, analyser, merger, filter;
 
@@ -275,11 +301,12 @@
     playing: false,
     elapsed: 0,
     totalEstimate: 0,
-    cumStarts: [],
+    cumulative: [],
     tickInterval: null,
     pendingTimeout: null,
-    playToken: 0,      // invalidated on pause/stop/seek so stale callbacks are ignored
-    liveUtterance: null, // kept as a strong reference — Safari can silently drop GC'd utterances
+    watchdogTimeout: null,
+    finishing: false,
+    playToken: 0, // invalidates stale callbacks after a seek/stop/pause
   };
 
   const playerTitle = $("#player-title");
@@ -294,21 +321,26 @@
   const iconPause = $("#icon-pause");
   const btnToneToggle = $("#btn-tone-toggle");
   const seekBar = $("#seek-bar");
-  const transcriptBody = $("#transcript-body");
-  const transcriptTitle = $("#transcript-title");
+  let seeking = false;
 
   function openPlayer(med) {
     state.med = med;
     state.segIndex = 0;
     state.elapsed = 0;
     state.playing = false;
+    state.finishing = false;
     state.playToken++;
     document.documentElement.style.setProperty("--accent", med.color);
     playerTitle.textContent = med.title;
     playerFreq.textContent = med.freqLabel;
     liveCaption.textContent = "Toca reproducir cuando estés lista.";
-    refreshTiming();
+    state.totalEstimate = estimateSeconds(med, prefs.rate);
+    state.cumulative = buildCumulative(med, prefs.rate);
+    const totalCapped = Math.round(Math.min(state.totalEstimate, SAFETY_CUTOFF));
+    timeTotalEl.textContent = fmt(totalCapped);
     timeElapsedEl.textContent = "00:00";
+    seekBar.max = String(totalCapped);
+    seekBar.value = "0";
     progressFg.style.strokeDasharray = CIRC;
     progressFg.style.strokeDashoffset = CIRC;
     setPlayIcon(false);
@@ -317,34 +349,10 @@
     goTo("player");
   }
 
-  function refreshTiming() {
-    state.totalEstimate = estimateSeconds(state.med, prefs.rate);
-    state.cumStarts = buildCumStarts(state.med, prefs.rate);
-    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF);
-    seekBar.max = String(Math.round(cap));
-    timeTotalEl.textContent = "~" + fmt(cap);
-    updateSeekUI();
-  }
-
-  function updateSeekUI() {
-    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF) || 1;
-    const pct = Math.min(1, state.elapsed / cap);
-    seekBar.value = String(Math.round(state.elapsed));
-    seekBar.style.setProperty("--seek-pct", (pct * 100) + "%");
-    progressFg.style.strokeDashoffset = String(CIRC * (1 - pct));
-    timeElapsedEl.textContent = fmt(state.elapsed);
-  }
-
   $("#btn-back").addEventListener("click", () => { stopSession(); goTo("home"); });
   $("#btn-stop").addEventListener("click", () => { stopSession(); goTo("home"); });
   $("#btn-settings").addEventListener("click", () => goTo("settings"));
   $("#btn-settings-back").addEventListener("click", () => goTo("home"));
-  $("#btn-transcript").addEventListener("click", () => {
-    transcriptTitle.textContent = state.med ? state.med.title : "Texto completo";
-    goTo("transcript");
-    highlightTranscript(state.segIndex, true);
-  });
-  $("#btn-transcript-back").addEventListener("click", () => goTo("player"));
 
   btnToneToggle.addEventListener("click", () => {
     prefs.toneOn = !prefs.toneOn;
@@ -380,6 +388,7 @@
     setPlayIcon(false);
     speechSynthesis.cancel();
     clearTimeout(state.pendingTimeout);
+    clearTimeout(state.watchdogTimeout);
     stopTicker();
     fadeToneTo(0);
     releaseWakeLock();
@@ -390,6 +399,7 @@
     state.playToken++;
     speechSynthesis.cancel();
     clearTimeout(state.pendingTimeout);
+    clearTimeout(state.watchdogTimeout);
     stopTicker();
     stopAudioGraph();
     releaseWakeLock();
@@ -399,157 +409,157 @@
   function startTicker() {
     stopTicker();
     state.tickInterval = setInterval(() => {
-      if (!state.playing) return;
       state.elapsed += 1;
-      updateSeekUI();
-      highlightTranscript(state.segIndex, false);
-      const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF);
-      if (state.elapsed >= cap) finishSession();
+      timeElapsedEl.textContent = fmt(state.elapsed);
+      const cap = Math.max(1, Math.min(state.totalEstimate, SAFETY_CUTOFF));
+      const pct = Math.min(1, state.elapsed / cap);
+      progressFg.style.strokeDashoffset = String(CIRC * (1 - pct));
+      if (!seeking) seekBar.value = String(state.elapsed);
+      if (state.elapsed >= SAFETY_CUTOFF - 20 && !state.finishing) {
+        state.finishing = true;
+        state.segIndex = state.med.segments.length - 1;
+      }
     }, 1000);
   }
   function stopTicker() { clearInterval(state.tickInterval); state.tickInterval = null; }
 
+  // Seek bar: live-preview the time while dragging, actually seek on release.
+  seekBar.addEventListener("input", () => {
+    seeking = true;
+    timeElapsedEl.textContent = fmt(parseInt(seekBar.value, 10));
+  });
+  seekBar.addEventListener("change", () => {
+    performSeek(parseInt(seekBar.value, 10));
+    seeking = false;
+  });
+  $("#btn-skip-back").addEventListener("click", () => performSeek(Math.max(0, state.elapsed - 15)));
+  $("#btn-skip-fwd").addEventListener("click", () => performSeek(Math.min(parseInt(seekBar.max, 10), state.elapsed + 15)));
+
+  function performSeek(targetSeconds) {
+    if (!state.med) return;
+    const idx = segmentIndexForTime(state.cumulative, targetSeconds);
+    state.playToken++;
+    speechSynthesis.cancel();
+    clearTimeout(state.pendingTimeout);
+    clearTimeout(state.watchdogTimeout);
+    state.segIndex = idx;
+    state.elapsed = Math.round(state.cumulative[idx].start);
+    state.finishing = false;
+    timeElapsedEl.textContent = fmt(state.elapsed);
+    seekBar.value = String(state.elapsed);
+    const cap = Math.max(1, Math.min(state.totalEstimate, SAFETY_CUTOFF));
+    const pct = Math.min(1, state.elapsed / cap);
+    progressFg.style.strokeDashoffset = String(CIRC * (1 - pct));
+    if (state.playing) speakSegment(state.segIndex);
+    else highlightTranscript(idx);
+  }
+
   function speakSegment(i) {
     if (!state.playing) return;
-    if (i >= state.med.segments.length) { finishSession(); return; }
-
+    if (i >= state.med.segments.length) {
+      finishSession();
+      return;
+    }
+    const myToken = state.playToken;
     const seg = state.med.segments[i];
-    const token = state.playToken;
 
     liveCaption.style.opacity = 0;
     setTimeout(() => {
-      if (state.playToken !== token) return;
+      if (myToken !== state.playToken) return;
       liveCaption.textContent = seg.t;
       liveCaption.style.opacity = 1;
     }, 200);
-    highlightTranscript(i, false);
+    highlightTranscript(i);
+
+    const advance = () => {
+      if (myToken !== state.playToken || !state.playing) return;
+      clearTimeout(state.watchdogTimeout);
+      const waitSec = state.finishing ? Math.min(seg.p, 4) : seg.p;
+      state.pendingTimeout = setTimeout(() => {
+        if (myToken !== state.playToken || !state.playing) return;
+        state.segIndex = i + 1;
+        speakSegment(state.segIndex);
+      }, waitSec * 1000);
+    };
 
     const u = new SpeechSynthesisUtterance(seg.t);
     u.lang = "es-MX";
     const v = currentVoice();
     if (v) u.voice = v;
     u.rate = prefs.rate;
-    u.pitch = 1.04;
-    state.liveUtterance = u; // keep a strong reference so Safari doesn't GC it mid-speech
-
-    let settled = false;
-    const advance = () => {
-      if (settled) return;
-      settled = true;
-      if (state.playToken !== token) return;
-      clearTimeout(watchdog);
-      state.pendingTimeout = setTimeout(() => {
-        if (state.playToken !== token) return;
-        state.segIndex = i + 1;
-        speakSegment(state.segIndex);
-      }, seg.p * 1000);
-    };
-
-    // Safety net: iOS Safari occasionally drops the onend/onerror event for
-    // an utterance and the session stalls forever with only the tone playing.
-    // If that happens, force the sequence forward after a generous timeout.
-    const expectedMs = (segSeconds(seg, prefs.rate) * 1000) * 2.5 + 6000;
-    const watchdog = setTimeout(advance, expectedMs);
-
+    u.pitch = prefs.pitch;
     u.onend = advance;
     u.onerror = advance;
+    state.liveUtterance = u; // keep a strong reference — iOS can drop GC'd utterances mid-speech
     speechSynthesis.speak(u);
+
+    // Safety net: iOS Safari can occasionally swallow an utterance entirely
+    // (no onend/onerror ever fires). If that happens, force the sequence
+    // forward instead of leaving the session silently stuck.
+    const words = seg.t.trim().split(/\s+/).length;
+    const expectedMs = (words / (148 * prefs.rate / 60)) * 1000 * 2.5 + 6000;
+    clearTimeout(state.watchdogTimeout);
+    state.watchdogTimeout = setTimeout(() => {
+      if (myToken !== state.playToken || !state.playing) return;
+      speechSynthesis.cancel();
+      advance();
+    }, expectedMs);
   }
 
   function finishSession() {
     state.playing = false;
-    state.playToken++;
-    speechSynthesis.cancel();
-    clearTimeout(state.pendingTimeout);
-    stopTicker();
     setPlayIcon(false);
     liveCaption.textContent = "Sesión completa. 🌙";
-    state.elapsed = Math.min(state.totalEstimate, SAFETY_CUTOFF);
-    updateSeekUI();
+    progressFg.style.strokeDashoffset = "0";
     fadeToneTo(0);
     setTimeout(stopAudioGraph, 1500);
     releaseWakeLock();
   }
 
-  // ---------------------------------------------------------------
-  // Seeking / scrubbing
-  // ---------------------------------------------------------------
-  function segmentIndexForTime(t) {
-    let idx = 0;
-    for (let k = 0; k < state.cumStarts.length; k++) {
-      if (state.cumStarts[k] <= t) idx = k; else break;
-    }
-    return idx;
-  }
-
-  function seekTo(targetSeconds) {
-    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF);
-    const t = Math.max(0, Math.min(cap, targetSeconds));
-    const idx = segmentIndexForTime(t);
-
-    state.playToken++; // invalidate anything in-flight
-    speechSynthesis.cancel();
-    clearTimeout(state.pendingTimeout);
-
-    state.segIndex = idx;
-    state.elapsed = Math.round(t);
-    updateSeekUI();
-    highlightTranscript(idx, true);
-
-    if (state.playing) {
-      speakSegment(state.segIndex);
-    } else {
-      liveCaption.textContent = state.med.segments[idx].t;
-    }
-  }
-
-  seekBar.addEventListener("input", () => {
-    // live-update visual position while dragging, without restarting speech yet
-    const t = parseFloat(seekBar.value);
-    const cap = Math.min(state.totalEstimate, SAFETY_CUTOFF) || 1;
-    seekBar.style.setProperty("--seek-pct", (Math.min(1, t / cap) * 100) + "%");
-    timeElapsedEl.textContent = fmt(t);
-  });
-  seekBar.addEventListener("change", () => {
-    seekTo(parseFloat(seekBar.value));
-  });
-
-  $("#btn-skip-back").addEventListener("click", () => seekTo(state.elapsed - 15));
-  $("#btn-skip-fwd").addEventListener("click", () => seekTo(state.elapsed + 15));
-
-  // ---------------------------------------------------------------
-  // Full transcript ("lyrics view")
-  // ---------------------------------------------------------------
-  let transcriptEls = [];
-  function buildTranscript(med) {
-    transcriptBody.innerHTML = "";
-    transcriptEls = med.segments.map((seg, idx) => {
-      const p = document.createElement("p");
-      p.className = "transcript-line";
-      p.textContent = seg.t;
-      p.dataset.index = String(idx);
-      p.addEventListener("click", () => {
-        seekTo(state.cumStarts[idx]);
-        goTo("player");
-      });
-      transcriptBody.appendChild(p);
-      return p;
-    });
-  }
-  function highlightTranscript(idx, forceScroll) {
-    if (!transcriptEls.length) return;
-    transcriptEls.forEach((el, k) => el.classList.toggle("is-current", k === idx));
-    if (forceScroll || screens.transcript.classList.contains("screen--active")) {
-      const el = transcriptEls[idx];
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }
-
-  // iOS sometimes suspends speech synthesis after the tab has been
-  // backgrounded; nudge it awake periodically while a session is active.
+  // iOS sometimes leaves speechSynthesis in a "paused" state after the tab
+  // has been backgrounded; nudge it awake periodically while active.
   setInterval(() => {
     if (state.playing && speechSynthesis.paused) speechSynthesis.resume();
   }, 4000);
+
+  // ---------------------------------------------------------------
+  // Full transcript panel (Spotify-lyrics style)
+  // ---------------------------------------------------------------
+  const transcriptPanel = $("#transcript-panel");
+  const transcriptScroll = $("#transcript-scroll");
+
+  function buildTranscript(med) {
+    transcriptScroll.innerHTML = "";
+    med.segments.forEach((seg, i) => {
+      const p = document.createElement("p");
+      p.className = "transcript-line";
+      p.dataset.index = String(i);
+      p.textContent = seg.t;
+      p.addEventListener("click", () => {
+        const startTime = state.cumulative[i] ? state.cumulative[i].start : 0;
+        performSeek(Math.round(startTime));
+      });
+      transcriptScroll.appendChild(p);
+    });
+  }
+  function highlightTranscript(i) {
+    transcriptScroll.querySelectorAll(".transcript-line").forEach(el => el.classList.remove("is-current"));
+    const el = transcriptScroll.querySelector(`.transcript-line[data-index="${i}"]`);
+    if (el) {
+      el.classList.add("is-current");
+      if (transcriptPanel.classList.contains("open")) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+  }
+  $("#btn-transcript-open").addEventListener("click", () => {
+    if (!state.med) return;
+    $("#transcript-title-text").textContent = state.med.title;
+    transcriptPanel.classList.add("open");
+    const current = transcriptScroll.querySelector(".transcript-line.is-current");
+    if (current) setTimeout(() => current.scrollIntoView({ block: "center" }), 50);
+  });
+  $("#btn-transcript-close").addEventListener("click", () => transcriptPanel.classList.remove("open"));
 
   // ---------------------------------------------------------------
   // Service worker (offline support)

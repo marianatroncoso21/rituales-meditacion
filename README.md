@@ -1,35 +1,37 @@
-# Ritual — Meditación Guiada
+# Rituales — Meditación Guiada
 
-PWA offline con 6 meditaciones guiadas (voz + frecuencia sanadora), pensada para instalarse en tu iPhone.
+PWA offline con 9 meditaciones guiadas (voz + frecuencia sanadora), diseño tipo galaxia.
 
-## Qué incluye
+## Qué cambió en esta versión
 
-- **6 rituales**: Atención Plena, Sueño Profundo, Liberar la Ansiedad, Amor Bondadoso, Escaneo Corporal, y Tu Nuevo Yo (inspirada en principios de neurociencia sobre emoción e identidad — contenido original, no un guion de terceros).
-- Voz guiada con **Web Speech API** (nativa de iOS, sin costo ni API key). En Ajustes puedes elegir cuál de las voces en español de tu iPhone usar, y su velocidad.
-- **Tono de frecuencia sanadora** de fondo generado en vivo con Web Audio (528Hz, 396Hz, etc.), con opción de efecto binaural si usas audífonos.
-- Cada sesión dura entre ~13 y 15 minutos (hay un límite de seguridad a los 15 min por si el habla del dispositivo va más lento de lo estimado).
-- 100% offline una vez instalada — no depende de ninguna API externa.
+**Meditaciones:**
+- **Salto Cuántico** (antes "Tu Nuevo Yo"): reescrita para apoyarse en ideas generales de física cuántica (el observador, la posibilidad, el salto cuántico como metáfora de cambio no-gradual), presentadas explícitamente como metáfora poética, no como enseñanza científica literal ni atribuida a ningún maestro en particular.
+- **Manejo del Dolor** (nueva, 741Hz): técnica de atención plena para relacionarte distinto con una sensación difícil. Incluye una nota breve de que no sustituye atención médica — la puse en la descripción de texto bajo el nombre, no hablada dentro del audio, para no romper la inmersión.
+- **Desapego** (nueva, 852Hz): soltar el control de lo que no depende de ti, sin dejar de que te importe.
+- **Pensamientos Limitantes** (nueva, 963Hz): ejercicio de indagación (estilo cuestionamiento socrático) para observar creencias automáticas sin pelear con ellas.
+- Los guiones de las 5 originales se mantienen con ajustes menores de tono.
 
-## Publicar en GitHub Pages (mismo flujo que tus otras apps)
+**Diseño:**
+- Paleta nueva: negro/espacio profundo en vez de morado, acentos dorados y tonos fríos tipo nebulosa.
+- Ícono nuevo: galaxia espiral con núcleo brillante, generado a partir de tus imágenes de referencia.
 
-1. Crea un repo nuevo en tu cuenta `marianatroncoso21`, por ejemplo `rituales-meditacion`.
-2. Sube todos los archivos de esta carpeta (menos `make_icons.py` y este README, son solo de desarrollo) a la raíz del repo.
-3. En **Settings → Pages**, selecciona la rama `main` y carpeta `/ (root)`.
-4. Tu app quedará en `https://marianatroncoso21.github.io/rituales-meditacion/`.
-5. Ábrela en Safari en tu iPhone → botón compartir → **Agregar a pantalla de inicio**.
+**Reproductor:**
+- Barra para adelantar/retroceder como en Spotify, + botones de ⏪15s / 15s⏪.
+- Transcripción completa (ícono de líneas arriba a la derecha del reproductor): muestra todo el guion, resalta la línea actual y puedes tocar cualquier línea para saltar ahí.
+- "Watchdog" anti-silencio: si Safari se queda muda a mitad de una frase (bug conocido de iOS), la app detecta que no avanzó y salta sola a la siguiente en vez de quedarse atorada.
+- Control de tono de voz (grave/agudo) además del de velocidad, en Ajustes.
+- Fix de audio en iOS: se le pide al sistema tratar el tono de fondo como "reproducción" para que no lo silencie el switch físico de silencio del iPhone.
 
-## Notas técnicas importantes
+## Sobre las voces (punto pendiente, honesto)
 
-- **Voces**: la primera vez que abras la app, dale un vistazo a Ajustes → Voz y prueba cuál suena más suave en tu iPhone (iOS suele incluir "Mónica", "Paulina" o "Ángela" en español). Para que suenen menos robóticas, descarga la versión "Mejorada" o "Premium" de esa voz en Ajustes del iPhone → Accesibilidad → Contenido hablado → Voces.
-- **Pantalla bloqueada**: esta es la limitación más importante a tener en cuenta. La app usa Web Speech API (la síntesis de voz del navegador), y en iOS Safari **no está garantizado que la voz siga sonando si bloqueas la pantalla manualmente con el botón**, aunque el tono de fondo (que sí usa Web Audio) tiene más probabilidad de seguir. La app activa "Wake Lock" para intentar mantener la pantalla encendida mientras reproduces, pero eso no evita que tú la bloquees a propósito. Recomendación: antes de meditar, ve a Ajustes del iPhone → Pantalla y Brillo → Bloqueo Automático → "Nunca" (y bájale el brillo para cuidar la batería), y vuelve a poner el bloqueo automático normal después.
-- **Pausa/reanudar**: por limitaciones de Safari con la síntesis de voz, al reanudar se repite la frase actual desde el inicio (no continúa a la mitad). Es una limitación del navegador, no un bug.
-- **Efecto binaural**: solo se percibe bien con audífonos, ya que envía una frecuencia ligeramente distinta a cada oído.
-- **Barra de avance/retroceso**: puedes arrastrar la barra o usar los botones de 15s para saltar. Como el audio se genera en vivo (no es un archivo), el salto es por "línea" de la meditación más cercana al segundo que elegiste, no al segundo exacto.
-- **Texto completo**: el ícono de líneas (☰) arriba a la derecha del reproductor abre el guion completo de la meditación, con la línea actual resaltada y con scroll automático, similar a una vista de letras. Puedes tocar cualquier línea para saltar directo ahí.
-- **Si una meditación se queda sonando solo el tono sin voz**: se agregó un mecanismo de seguridad que detecta cuando Safari deja de avisar que terminó de hablar (un bug conocido de iOS) y fuerza que continúe automáticamente. Si de todas formas se traba, usa la barra de avance para saltar manualmente.
+No tengo forma de generar audio de voz realista (tipo ElevenLabs) desde donde yo trabajo — no tengo acceso a esos servicios. Lo que sí hice fue dejar la base técnica lista: cada segmento del guion (en `data.js`) puede tener un campo opcional `audio` apuntando a un archivo mp3. Si en algún momento quieres voces más humanas:
 
-## Próximas ideas (si quieres seguir iterando)
+1. Genera los audios tú misma con un servicio como ElevenLabs (tienen plan gratuito, voces en español muy naturales) — exportas cada frase o cada meditación completa como mp3.
+2. Súbelos a una carpeta `audio/` en este repo.
+3. Tráeme los archivos (o dime que ya están en el repo) y conecto el reproductor para que los use en vez de la voz del sistema, manteniendo el tono de fondo mezclado igual que ahora.
 
-- Guardar un historial de sesiones completadas.
-- Agregar más rituales (ej. meditación matutina, gratitud).
-- Descargar el audio como archivo en vez de generarlo en vivo (requeriría un servicio de texto-a-voz externo).
+Mientras tanto, la mejor calidad gratuita sigue siendo descargar las voces "Mejoradas" en Ajustes → Accesibilidad → Contenido hablado → Voces → Español, y ajustar velocidad/tono en Ajustes dentro de la app.
+
+## Publicar los cambios
+
+Mismo flujo de siempre: descomprime este zip, entra a tu repo en GitHub, **Add file → Upload files**, arrastra todo el contenido (no la carpeta), Commit changes, espera el deploy en la pestaña Actions.
