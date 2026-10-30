@@ -1,43 +1,75 @@
-# Rituales — Meditación Guiada
+# Rituales · Meditación guiada
 
-PWA offline con 9 meditaciones guiadas (voz + frecuencia sanadora), diseño tipo galaxia.
+App web de meditación guiada en español. Eliges una práctica, y una voz te acompaña paso a paso mientras suena un tono de fondo a una frecuencia determinada. Funciona sin internet y se instala en la pantalla de inicio del teléfono como una app.
 
-## Qué cambió en esta versión
+**Pruébala:** https://marianatroncoso21.github.io/rituales-meditacion/
 
-**Meditaciones:**
-- **Salto Cuántico** (antes "Tu Nuevo Yo"): reescrita para apoyarse en ideas generales de física cuántica (el observador, la posibilidad, el salto cuántico como metáfora de cambio no-gradual), presentadas explícitamente como metáfora poética, no como enseñanza científica literal ni atribuida a ningún maestro en particular.
-- **Manejo del Dolor** (nueva, 741Hz): técnica de atención plena para relacionarte distinto con una sensación difícil. Incluye una nota breve de que no sustituye atención médica — la puse en la descripción de texto bajo el nombre, no hablada dentro del audio, para no romper la inmersión.
-- **Desapego** (nueva, 852Hz): soltar el control de lo que no depende de ti, sin dejar de que te importe.
-- **Pensamientos Limitantes** (nueva, 963Hz): ejercicio de indagación (estilo cuestionamiento socrático) para observar creencias automáticas sin pelear con ellas.
-- Los guiones de las 5 originales se mantienen con ajustes menores de tono.
+## Qué incluye
 
-**Diseño:**
-- Paleta nueva: negro/espacio profundo en vez de morado, acentos dorados y tonos fríos tipo nebulosa.
-- Ícono nuevo: galaxia espiral con núcleo brillante, generado a partir de tus imágenes de referencia.
+- **9 meditaciones** de entre 7 y 12 minutos, con guion propio.
+- **Voz guiada** con la síntesis de voz del dispositivo (sin servidores ni costos de API).
+- **Tono de fondo** generado en tiempo real, con efecto binaural opcional para audífonos.
+- **Reproductor** con barra de avance, saltos de 15 segundos y anillo de progreso.
+- **Texto completo** del guion, con la línea actual resaltada. Tocar una línea salta a ese punto.
+- **Ajustes de voz**: elección de voz, velocidad, tono y volumen del sonido de fondo.
+- **Instalable y offline** (PWA): después de la primera visita funciona sin conexión.
 
-**Reproductor:**
-- Barra para adelantar/retroceder como en Spotify, + botones de ⏪15s / 15s⏪.
-- Transcripción completa (ícono de líneas arriba a la derecha del reproductor): muestra todo el guion, resalta la línea actual y puedes tocar cualquier línea para saltar ahí.
-- "Watchdog" anti-silencio: si Safari se queda muda a mitad de una frase (bug conocido de iOS), la app detecta que no avanzó y salta sola a la siguiente en vez de quedarse atorada.
-- Control de tono de voz (grave/agudo) además del de velocidad, en Ajustes.
-- Fix de audio en iOS: se le pide al sistema tratar el tono de fondo como "reproducción" para que no lo silencie el switch físico de silencio del iPhone.
+## Las meditaciones
 
-## Sobre las voces (punto pendiente, honesto)
+| Meditación | Para qué sirve | Frecuencia |
+|---|---|---|
+| Atención Plena | Volver al presente observando pensamientos y sensaciones | 528 Hz |
+| Sueño Profundo | Soltar el día y dormir | 174 Hz |
+| Liberar la Ansiedad | Calmar el sistema nervioso con respiración y anclaje corporal | 396 Hz |
+| Amor Bondadoso | Cultivar compasión hacia ti y hacia los demás (metta) | 639 Hz |
+| Escaneo Corporal | Recorrer el cuerpo soltando tensión | 285 Hz |
+| Sentir Desde Ahora | Practicar en presente cómo quieres sentirte, inspirada en las enseñanzas de Neville Goddard | 432 Hz |
+| Manejo del Dolor | Cambiar la relación con una sensación difícil | 741 Hz |
+| Desapego | Soltar el control de lo que no depende de ti | 852 Hz |
+| Pensamientos Limitantes | Cuestionar creencias automáticas sin pelear con ellas | 963 Hz |
 
-No tengo forma de generar audio de voz realista (tipo ElevenLabs) desde donde yo trabajo — no tengo acceso a esos servicios. Lo que sí hice fue dejar la base técnica lista: cada segmento del guion (en `data.js`) puede tener un campo opcional `audio` apuntando a un archivo mp3. Si en algún momento quieres voces más humanas:
+> **Nota:** las frecuencias son tonos de fondo asociados tradicionalmente al bienestar; no hay evidencia científica sólida de efectos terapéuticos. Estas meditaciones son prácticas de relajación y atención plena, no sustituyen atención médica ni psicológica.
 
-1. Genera los audios tú misma con un servicio como ElevenLabs (tienen plan gratuito, voces en español muy naturales) — exportas cada frase o cada meditación completa como mp3.
-2. Súbelos a una carpeta `audio/` en este repo.
-3. Tráeme los archivos (o dime que ya están en el repo) y conecto el reproductor para que los use en vez de la voz del sistema, manteniendo el tono de fondo mezclado igual que ahora.
+## Instalarla en el iPhone
 
-Mientras tanto, la mejor calidad gratuita sigue siendo descargar las voces "Mejoradas" en Ajustes → Accesibilidad → Contenido hablado → Voces → Español, y ajustar velocidad/tono en Ajustes dentro de la app.
+1. Abre el enlace de arriba en **Safari**.
+2. Toca el botón de compartir y elige **Agregar a pantalla de inicio**.
+3. Ábrela desde el ícono. La primera vez, hazlo con internet para que se guarde todo.
 
-## Publicar los cambios
+Para voces más naturales, descarga las versiones mejoradas en **Ajustes → Accesibilidad → Contenido hablado → Voces → Español**. Luego, dentro de la app, en Ajustes → Voz, toca "Actualizar lista de voces".
 
-Mismo flujo de siempre: descomprime este zip, entra a tu repo en GitHub, **Add file → Upload files**, arrastra todo el contenido (no la carpeta), Commit changes, espera el deploy en la pestaña Actions.
+## Cómo está hecha
 
-## Cambios (octubre 2026)
+HTML, CSS y JavaScript sin dependencias ni proceso de build.
 
-- **Tono binaural**: la app ahora reanuda el audio automáticamente si iOS lo interrumpe cuando empieza a hablar la voz (antes solo lo revisaba al darle play). El botón "Tono" ya refleja la preferencia guardada. En Ajustes hay un botón "Probar tono" y un "Modo compatibilidad de audio" por si el iPhone sigue sin reproducirlo.
-- **"Sentir Desde Ahora"** (antes "Salto Cuántico"): reescrita desde cero, inspirada en las enseñanzas de Neville Goddard (imaginar y sentir en presente, escena breve que implica que ya es así, soltar el cómo y el cuándo).
-- Caché de la app actualizado (rituales-v3) para que el iPhone cargue la versión nueva.
+- **Voz:** Web Speech API (`speechSynthesis`).
+- **Tono de fondo:** Web Audio API, con dos osciladores sinusoidales (uno por oído; en modo binaural el derecho suena 6 Hz más agudo).
+- **Offline:** Service Worker con caché de los archivos de la app.
+- **Pantalla encendida:** Screen Wake Lock durante la sesión.
+
+```
+index.html          Estructura de las pantallas
+style.css           Estilos (tema oscuro tipo galaxia)
+app.js              Reproductor, voz, audio y ajustes
+data.js             Guiones y frecuencia de cada meditación
+service-worker.js   Caché para uso sin conexión
+manifest.json       Configuración de la PWA
+icons/              Íconos de la app
+```
+
+Para agregar una meditación, añade un objeto a la lista de `data.js` con su título, frecuencia, color y los fragmentos del guion (`t` es el texto y `p` los segundos de pausa después).
+
+Para probarla en tu computadora, sirve la carpeta con cualquier servidor estático, por ejemplo `python3 -m http.server`, y abre `localhost:8000`.
+
+## Limitaciones conocidas (iOS / Safari)
+
+- Si bloqueas el teléfono con el botón lateral, iOS puede pausar la voz. Lo más estable es dejar la pantalla encendida durante la sesión.
+- Al pausar y reanudar, Safari repite la frase actual desde el inicio.
+- La calidad de la voz depende de las voces instaladas en el dispositivo; suena más natural con las versiones mejoradas.
+- Si no se escucha el tono, usa **Ajustes → Probar tono** o activa el **modo compatibilidad de audio**.
+
+## Ideas pendientes
+
+- Voces pregrabadas de mayor calidad en lugar de la síntesis del sistema.
+- Historial de sesiones completadas.
+- Más meditaciones.
