@@ -148,7 +148,19 @@
       <p class="setting-hint">Reproduce una frecuencia ligeramente distinta en cada oído. Solo funciona bien con audífonos.</p>
     </div>
 
-    <button id="btn-test-voice" class="pill-btn">Probar voz</button>
+    <div class="setting-block">
+      <label class="setting-label switch-row" for="compat-toggle">
+        <span>Modo compatibilidad de audio</span>
+        <input type="checkbox" id="compat-toggle">
+      </label>
+      <p class="setting-hint">Actívalo solo si en tu iPhone no se escucha el tono junto con la voz. Reproduce el tono como audio normal del sistema.</p>
+    </div>
+
+    <div class="setting-actions">
+      <button id="btn-test-voice" class="pill-btn">Probar voz</button>
+      <button id="btn-test-tone" class="pill-btn">Probar tono</button>
+    </div>
+    <p id="tone-test-status" class="setting-hint"></p>
   </section>
 
 </div>

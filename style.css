@@ -262,3 +262,6 @@ input[type="range"]{ width:100%; accent-color:var(--gold); }
 @media (prefers-reduced-motion: reduce){
   .ring{ animation:none; }
 }
+
+/* ---------- SETTINGS: acciones de prueba ---------- */
+.setting-actions{ display:flex; gap:10px; flex-wrap:wrap; }

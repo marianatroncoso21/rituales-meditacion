@@ -32,6 +32,7 @@
     toneVolume: 0.09,
     binaural: true,
     toneOn: true,
+    compat: false,
   }, JSON.parse(localStorage.getItem("rituales_prefs") || "{}"));
 
   function savePrefs() {
@@ -179,8 +180,30 @@
     savePrefs();
   });
 
+  const compatToggle = $("#compat-toggle");
+  compatToggle.checked = prefs.compat;
+  compatToggle.addEventListener("change", () => {
+    prefs.compat = compatToggle.checked;
+    savePrefs();
+  });
+
   $("#btn-test-voice").addEventListener("click", () => {
     speakOnce("Hola. Así sonará mi voz durante tu meditación.");
+  });
+
+  // Prueba de tono: suena unos segundos SIN voz, para separar si el problema
+  // es el tono en sí o la mezcla con la voz durante la meditación.
+  $("#btn-test-tone").addEventListener("click", () => {
+    const status = $("#tone-test-status");
+    if (state.playing) return;
+    ensureAudioGraph(432, prefs.binaural && binauralToggle.checked);
+    toneGain.gain.setTargetAtTime(Math.max(prefs.toneVolume, 0.12), audioCtx.currentTime, 0.1);
+    status.textContent = "Sonando 4 segundos… (estado del audio: " + audioCtx.state + ")";
+    setTimeout(() => {
+      fadeToneTo(0);
+      setTimeout(() => { if (!state.playing) stopAudioGraph(); }, 800);
+      status.textContent = "Listo. Si no escuchaste nada, activa el modo compatibilidad de abajo y prueba de nuevo.";
+    }, 4000);
   });
 
   function speakOnce(text) {
@@ -199,10 +222,27 @@
   // ---------------------------------------------------------------
   let audioCtx = null;
   let oscL, oscR, toneGain, analyser, merger, filter;
+  // "Modo compatibilidad": en vez de mandar el tono directo a la salida de
+  // Web Audio, lo pasamos por un elemento <audio>. iOS lo trata como
+  // reproducción de medios normal (como Música), que es más estable cuando
+  // la voz del sistema también está hablando.
+  let mediaDest = null, mediaEl = null;
+
+  // iOS puede "interrumpir" el AudioContext (estado "interrupted" o
+  // "suspended") justo cuando la voz del sistema toma el audio. Si no lo
+  // reanudamos, el tono se queda mudo aunque la voz siga sonando.
+  function keepAudioAlive() {
+    if (!audioCtx || !oscL) return; // no hay tono activo
+    if (audioCtx.state !== "running") audioCtx.resume().catch(() => {});
+    if (mediaEl && mediaEl.paused) mediaEl.play().catch(() => {});
+  }
 
   function ensureAudioGraph(freq, binaural) {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.onstatechange = keepAudioAlive;
+    }
+    if (audioCtx.state !== "running") audioCtx.resume().catch(() => {});
 
     stopAudioGraph();
 
@@ -229,7 +269,19 @@
     merger.connect(filter);
     filter.connect(toneGain);
     toneGain.connect(analyser);
-    toneGain.connect(audioCtx.destination);
+
+    if (prefs.compat && audioCtx.createMediaStreamDestination) {
+      if (!mediaDest) mediaDest = audioCtx.createMediaStreamDestination();
+      if (!mediaEl) {
+        mediaEl = new Audio();
+        mediaEl.setAttribute("playsinline", "");
+        mediaEl.srcObject = mediaDest.stream;
+      }
+      toneGain.connect(mediaDest);
+      mediaEl.play().catch(() => {});
+    } else {
+      toneGain.connect(audioCtx.destination);
+    }
 
     oscL.start();
     oscR.start();
@@ -239,6 +291,7 @@
   }
 
   function stopAudioGraph() {
+    if (mediaEl) { try { mediaEl.pause(); } catch (e) {} }
     if (oscL) { try { oscL.stop(); } catch (e) {} oscL.disconnect(); oscL = null; }
     if (oscR) { try { oscR.stop(); } catch (e) {} oscR.disconnect(); oscR = null; }
     if (toneGain) { toneGain.disconnect(); toneGain = null; }
@@ -287,7 +340,10 @@
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && state.playing) requestWakeLock();
+    if (document.visibilityState === "visible" && state.playing) {
+      requestWakeLock();
+      keepAudioAlive();
+    }
   });
 
   // ---------------------------------------------------------------
@@ -354,11 +410,19 @@
   $("#btn-settings").addEventListener("click", () => goTo("settings"));
   $("#btn-settings-back").addEventListener("click", () => goTo("home"));
 
+  // El botón debe reflejar siempre la preferencia guardada. Antes siempre
+  // arrancaba diciendo "activado" aunque el tono estuviera apagado desde una
+  // sesión anterior, y parecía que el sonido "se había roto".
+  function syncToneButton() {
+    btnToneToggle.dataset.on = String(prefs.toneOn);
+    btnToneToggle.textContent = "Tono: " + (prefs.toneOn ? "activado" : "apagado");
+  }
+  syncToneButton();
+
   btnToneToggle.addEventListener("click", () => {
     prefs.toneOn = !prefs.toneOn;
     savePrefs();
-    btnToneToggle.dataset.on = String(prefs.toneOn);
-    btnToneToggle.textContent = "Tono: " + (prefs.toneOn ? "activado" : "apagado");
+    syncToneButton();
     fadeToneTo(prefs.toneOn ? prefs.toneVolume : 0);
   });
 
@@ -488,6 +552,7 @@
     if (v) u.voice = v;
     u.rate = prefs.rate;
     u.pitch = prefs.pitch;
+    u.onstart = () => { setTimeout(keepAudioAlive, 300); };
     u.onend = advance;
     u.onerror = advance;
     state.liveUtterance = u; // keep a strong reference — iOS can drop GC'd utterances mid-speech
@@ -519,7 +584,9 @@
   // iOS sometimes leaves speechSynthesis in a "paused" state after the tab
   // has been backgrounded; nudge it awake periodically while active.
   setInterval(() => {
-    if (state.playing && speechSynthesis.paused) speechSynthesis.resume();
+    if (!state.playing) return;
+    if (speechSynthesis.paused) speechSynthesis.resume();
+    keepAudioAlive();
   }, 4000);
 
   // ---------------------------------------------------------------

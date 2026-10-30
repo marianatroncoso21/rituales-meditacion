@@ -35,3 +35,9 @@ Mientras tanto, la mejor calidad gratuita sigue siendo descargar las voces "Mejo
 ## Publicar los cambios
 
 Mismo flujo de siempre: descomprime este zip, entra a tu repo en GitHub, **Add file → Upload files**, arrastra todo el contenido (no la carpeta), Commit changes, espera el deploy en la pestaña Actions.
+
+## Cambios (octubre 2026)
+
+- **Tono binaural**: la app ahora reanuda el audio automáticamente si iOS lo interrumpe cuando empieza a hablar la voz (antes solo lo revisaba al darle play). El botón "Tono" ya refleja la preferencia guardada. En Ajustes hay un botón "Probar tono" y un "Modo compatibilidad de audio" por si el iPhone sigue sin reproducirlo.
+- **"Sentir Desde Ahora"** (antes "Salto Cuántico"): reescrita desde cero, inspirada en las enseñanzas de Neville Goddard (imaginar y sentir en presente, escena breve que implica que ya es así, soltar el cómo y el cuándo).
+- Caché de la app actualizado (rituales-v3) para que el iPhone cargue la versión nueva.
