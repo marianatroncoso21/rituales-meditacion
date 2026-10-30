@@ -1,9 +1,6 @@
 // Cada meditación es una secuencia de fragmentos hablados (t) con una pausa
-// en segundos después de cada uno (p). Los tiempos están calibrados para que
-// la sesión completa dure entre 13 y 15 minutos a una velocidad de voz lenta.
-// El campo opcional `audio` puede apuntar a un archivo de audio pre-grabado
-// (ej. "audio/mindfulness/01.mp3"); si existe, la app lo reproduce en vez de
-// usar la voz del sistema. Si no existe, usa speechSynthesis como respaldo.
+// en segundos después de cada uno (p). La app los lee con la voz del sistema
+// (speechSynthesis) y la sesión nunca pasa de 15 minutos (límite en app.js).
 
 const MEDITATIONS = [
   {

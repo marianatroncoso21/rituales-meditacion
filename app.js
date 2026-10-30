@@ -29,7 +29,7 @@
     voiceURI: null,
     rate: 0.84,
     pitch: 1.0,
-    toneVolume: 0.09,
+    toneVolume: 0.04,
     binaural: true,
     toneOn: true,
     compat: false,
@@ -37,6 +37,28 @@
 
   function savePrefs() {
     localStorage.setItem("rituales_prefs", JSON.stringify(prefs));
+  }
+
+  // Migración: el volumen anterior (0.09) tapaba la voz. Quien ya tenía ese
+  // valor guardado lo recibe reiniciado al nuevo, más bajo, una sola vez.
+  if ((prefs.prefsVersion || 0) < 2) {
+    prefs.toneVolume = 0.04;
+    prefs.prefsVersion = 2;
+    savePrefs();
+  }
+
+  // Un tono puro entre 400 y 960 Hz cae en la misma banda que la voz humana
+  // y la enmascara. Por eso el tono baja a una fracción de su volumen
+  // mientras la voz habla y vuelve a su nivel completo en los silencios.
+  const DUCK = 0.3;
+  function toneTarget() {
+    if (!prefs.toneOn) return 0;
+    return prefs.toneVolume * (state.voiceSpeaking ? DUCK : 1);
+  }
+  function applyToneLevel(timeConstant) {
+    if (toneGain && audioCtx) {
+      toneGain.gain.setTargetAtTime(toneTarget(), audioCtx.currentTime, timeConstant);
+    }
   }
 
   // ---------------------------------------------------------------
@@ -169,7 +191,7 @@
   toneVolumeRange.value = prefs.toneVolume;
   toneVolumeRange.addEventListener("input", () => {
     prefs.toneVolume = parseFloat(toneVolumeRange.value);
-    if (toneGain) toneGain.gain.setTargetAtTime(prefs.toneOn ? prefs.toneVolume : 0, audioCtx.currentTime, 0.3);
+    applyToneLevel(0.3);
     savePrefs();
   });
 
@@ -197,7 +219,7 @@
     const status = $("#tone-test-status");
     if (state.playing) return;
     ensureAudioGraph(432, prefs.binaural && binauralToggle.checked);
-    toneGain.gain.setTargetAtTime(Math.max(prefs.toneVolume, 0.12), audioCtx.currentTime, 0.1);
+    toneGain.gain.setTargetAtTime(Math.max(prefs.toneVolume, 0.03), audioCtx.currentTime, 0.1);
     status.textContent = "Sonando 4 segundos… (estado del audio: " + audioCtx.state + ")";
     setTimeout(() => {
       fadeToneTo(0);
@@ -286,8 +308,7 @@
     oscL.start();
     oscR.start();
 
-    const target = prefs.toneOn ? prefs.toneVolume : 0;
-    toneGain.gain.setTargetAtTime(target, audioCtx.currentTime, 1.2);
+    toneGain.gain.setTargetAtTime(toneTarget(), audioCtx.currentTime, 1.2);
   }
 
   function stopAudioGraph() {
@@ -363,6 +384,7 @@
     watchdogTimeout: null,
     finishing: false,
     playToken: 0, // invalidates stale callbacks after a seek/stop/pause
+    voiceSpeaking: false, // true mientras habla la voz (el tono baja)
   };
 
   const playerTitle = $("#player-title");
@@ -384,6 +406,7 @@
     state.segIndex = 0;
     state.elapsed = 0;
     state.playing = false;
+    state.voiceSpeaking = false;
     state.finishing = false;
     state.playToken++;
     document.documentElement.style.setProperty("--accent", med.color);
@@ -423,7 +446,7 @@
     prefs.toneOn = !prefs.toneOn;
     savePrefs();
     syncToneButton();
-    fadeToneTo(prefs.toneOn ? prefs.toneVolume : 0);
+    applyToneLevel(0.5);
   });
 
   function setPlayIcon(isPlaying) {
@@ -448,6 +471,7 @@
 
   function pauseSession() {
     state.playing = false;
+    state.voiceSpeaking = false;
     state.playToken++;
     setPlayIcon(false);
     speechSynthesis.cancel();
@@ -460,6 +484,7 @@
 
   function stopSession() {
     state.playing = false;
+    state.voiceSpeaking = false;
     state.playToken++;
     speechSynthesis.cancel();
     clearTimeout(state.pendingTimeout);
@@ -552,9 +577,19 @@
     if (v) u.voice = v;
     u.rate = prefs.rate;
     u.pitch = prefs.pitch;
-    u.onstart = () => { setTimeout(keepAudioAlive, 300); };
-    u.onend = advance;
-    u.onerror = advance;
+    // Solo reaccionamos si esta frase sigue siendo la actual: al saltar o
+    // pausar, la frase vieja dispara su evento tarde y no debe subir el tono.
+    const setSpeaking = (speaking, timeConstant) => {
+      if (state.liveUtterance !== u || !state.playing) return;
+      state.voiceSpeaking = speaking;
+      applyToneLevel(timeConstant);
+    };
+    u.onstart = () => {
+      setSpeaking(true, 0.25);
+      setTimeout(keepAudioAlive, 300);
+    };
+    u.onend = () => { setSpeaking(false, 0.8); advance(); };
+    u.onerror = () => { setSpeaking(false, 0.8); advance(); };
     state.liveUtterance = u; // keep a strong reference — iOS can drop GC'd utterances mid-speech
     speechSynthesis.speak(u);
 
@@ -567,6 +602,8 @@
     state.watchdogTimeout = setTimeout(() => {
       if (myToken !== state.playToken || !state.playing) return;
       speechSynthesis.cancel();
+      state.voiceSpeaking = false;
+      applyToneLevel(0.8);
       advance();
     }, expectedMs);
   }
