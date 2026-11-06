@@ -251,10 +251,14 @@
   let mediaDest = null, mediaEl = null;
 
   // iOS puede "interrumpir" el AudioContext (estado "interrupted" o
-  // "suspended") justo cuando la voz del sistema toma el audio. Si no lo
-  // reanudamos, el tono se queda mudo aunque la voz siga sonando.
+  // "suspended") cuando la voz del sistema toma el audio. Reanudamos el tono,
+  // pero NUNCA mientras la voz está hablando: iOS solo deja una fuente de
+  // audio a la vez, y reanudar el tono en ese momento le quita el audio a la
+  // voz (se oía un segundo y después solo la frecuencia). El tono se
+  // recupera en las pausas entre frases.
   function keepAudioAlive() {
     if (!audioCtx || !oscL) return; // no hay tono activo
+    if (state.voiceSpeaking) return; // la voz tiene prioridad
     if (audioCtx.state !== "running") audioCtx.resume().catch(() => {});
     if (mediaEl && mediaEl.paused) mediaEl.play().catch(() => {});
   }
@@ -584,13 +588,19 @@
       state.voiceSpeaking = speaking;
       applyToneLevel(timeConstant);
     };
-    u.onstart = () => {
-      setSpeaking(true, 0.25);
-      setTimeout(keepAudioAlive, 300);
+    // Al terminar la frase, esperamos un instante a que iOS suelte el audio
+    // y entonces recuperamos el tono durante la pausa.
+    const finishSpeaking = () => {
+      setSpeaking(false, 0.8);
+      setTimeout(() => { if (state.playing && !state.voiceSpeaking) keepAudioAlive(); }, 400);
+      advance();
     };
-    u.onend = () => { setSpeaking(false, 0.8); advance(); };
-    u.onerror = () => { setSpeaking(false, 0.8); advance(); };
+    u.onend = finishSpeaking;
+    u.onerror = finishSpeaking;
     state.liveUtterance = u; // keep a strong reference — iOS can drop GC'd utterances mid-speech
+    // Marcamos "hablando" ANTES de llamar a speak(), no cuando llega onstart:
+    // así ningún evento del audio puede reanudar el tono justo al empezar.
+    setSpeaking(true, 0.25);
     speechSynthesis.speak(u);
 
     // Safety net: iOS Safari can occasionally swallow an utterance entirely
@@ -604,6 +614,7 @@
       speechSynthesis.cancel();
       state.voiceSpeaking = false;
       applyToneLevel(0.8);
+      setTimeout(() => { if (state.playing && !state.voiceSpeaking) keepAudioAlive(); }, 400);
       advance();
     }, expectedMs);
   }
